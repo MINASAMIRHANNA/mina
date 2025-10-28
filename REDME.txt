@@ -1,0 +1,79 @@
+docker-compose build --no-cache
+docker-compose up -d
+./start.sh
+
+
+Quick Test Commands
+Test if your API keys work:
+
+bash
+docker exec scalping-trading-bot python -c "
+from binance.client import Client
+from config import Config
+config = Config()
+client = Client(config.BINANCE_API_KEY, config.BINANCE_API_SECRET, testnet=True)
+print('Account:', client.get_account()['balances'][:3])
+print('BTC Price:', client.get_symbol_ticker(symbol='BTCUSDT'))
+"
+
+
+ Run the Debug Script
+bash
+# Run inside the container
+docker exec -it scalping-trading-bot python debug_bot.py
+
+# Or run locally if you have the dependencies
+python debug_bot.py
+
+
+Bot Descriptions:
+1. ScalpingBot (Original)
+Uses EMA, RSI, MACD, Bollinger Bands
+
+Trend-following strategy
+
+Buys dips in uptrends, sells rallies in downtrends
+
+2. NewListingBot
+Monitors for new coin listings on Binance
+
+Buys immediately when new coins are listed
+
+Sells at 5% profit target or 3% stop loss
+
+Small position sizes (2% of balance)
+
+3. HighVolumeBot
+Analyzes trading volume and price action
+
+Calculates trading scores based on volume spikes and momentum
+
+Trades coins with scores above 80
+
+Uses 3% position sizes
+
+4. LongShortBot
+Uses machine learning (Random Forest) for predictions
+
+Trained on historical price and volume data
+
+Makes long predictions with confidence scores
+
+Uses 4% position sizes with adjusted targets
+
+Setup Instructions:
+Create all files in the Deep_Trade directory
+
+Make scripts executable:
+
+bash
+chmod +x start.sh stop.sh update.sh
+Edit .env with your Binance API keys
+
+Start the system:
+
+bash
+./start.sh
+Access dashboard: http://localhost:5000
+
+The new multi-bot system gives you comprehensive trading coverage across different strategies and market conditions!
