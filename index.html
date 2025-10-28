@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Bot Trading Dashboard</title>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .card { background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+        .bot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
+        .stat-card { background: #f8f9fa; padding: 15px; border-radius: 6px; text-align: center; }
+        .bot-card { background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #007bff; }
+        .bot-running { border-left-color: #28a745; }
+        .bot-stopped { border-left-color: #dc3545; }
+        .profit { color: green; }
+        .loss { color: red; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        .start-btn { background: #28a745; color: white; }
+        .stop-btn { background: #dc3545; color: white; }
+        .bot-btn { padding: 5px 10px; font-size: 12px; }
+        .status-running { color: green; }
+        .status-stopped { color: red; }
+        .bot-status { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+        .running { background: #28a745; }
+        .stopped { background: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Multi-Bot Trading Dashboard</h1>
+        
+        <div class="card">
+            <div class="controls">
+                <button class="start-btn" onclick="startAllBots()">Start All Bots</button>
+                <button class="stop-btn" onclick="stopAllBots()">Stop All Bots</button>
+                <span id="global-status">Total Bots: <span id="bot-count">0</span></span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>🤖 Trading Bots Status</h3>
+            <div class="bot-grid" id="bots-status">
+                <!-- Bot status will be populated by JavaScript -->
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h3>📊 Overall Statistics</h3>
+                <div class="stats-grid" id="overall-stats">
+                    <div class="stat-card">
+                        <h4>Total Trades</h4>
+                        <p id="total-trades">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Overall Win Rate</h4>
+                        <p id="overall-win-rate">0%</p>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Total Profit</h4>
+                        <p id="total-profit">0.0000</p>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Active Positions</h4>
+                        <p id="active-positions">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>💰 Account Balance</h3>
+                <div id="balance">
+                    <div class="stat-card">
+                        <h4>Loading...</h4>
+                        <p>Please wait</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>📋 Recent Orders (All Bots)</h3>
+            <div id="orders-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Bot</th>
+                            <th>Symbol</th>
+                            <th>Side</th>
+                            <th>Quantity</th>
+                            <th>Price</th>
+                            <th>Profit</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orders-body">
+                        <tr>
+                            <td colspan="8" style="text-align: center;">No orders yet</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>📈 Performance Overview</h3>
+            <canvas id="performanceChart" width="400" height="200"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let performanceChart;
+        let allBots = {};
+
+        socket.on('connect', function() {
+            console.log('Connected to server');
+        });
+
+        socket.on('status_update', function(data) {
+            document.getElementById('bot-count').textContent = data.total_bots;
+        });
+
+        socket.on('stats_update', function(stats) {
+            updateBotsStatus(stats);
+            updateOverallStats(stats);
+        });
+
+        socket.on('orders_update', function(orders) {
+            updateOrders(orders);
+        });
+
+        socket.on('balance_update', function(balance) {
+            updateBalance(balance);
+        });
+
+        function updateBotsStatus(stats) {
+            const botsDiv = document.getElementById('bots-status');
+            allBots = stats;
+            
+            botsDiv.innerHTML = Object.keys(stats).map(botName => {
+                const bot = stats[botName];
+                const isRunning = bot.running;
+                const statusClass = isRunning ? 'bot-running' : 'bot-stopped';
+                const statusDot = isRunning ? 'running' : 'stopped';
+                
+                return `
+                    <div class="bot-card ${statusClass}">
+                        <h4>${bot.name || botName}</h4>
+                        <p><span class="bot-status ${statusDot}"></span> ${isRunning ? 'Running' : 'Stopped'}</p>
+                        <p>Trades: ${bot.total_trades || 0}</p>
+                        <p>Win Rate: ${((bot.win_rate || 0) * 100).toFixed(2)}%</p>
+                        <p>Profit: <span class="${(bot.total_profit || 0) >= 0 ? 'profit' : 'loss'}">${(bot.total_profit || 0).toFixed(4)}</span></p>
+                        <p>Positions: ${bot.current_positions || 0}</p>
+                        <div style="margin-top: 10px;">
+                            <button class="bot-btn ${isRunning ? 'stop-btn' : 'start-btn'}" 
+                                    onclick="${isRunning ? 'stopBot' : 'startBot'}('${botName}')">
+                                ${isRunning ? 'Stop' : 'Start'}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateOverallStats(stats) {
+            let totalTrades = 0;
+            let totalWinningTrades = 0;
+            let totalProfit = 0;
+            let totalPositions = 0;
+            
+            Object.values(stats).forEach(bot => {
+                totalTrades += bot.total_trades || 0;
+                totalWinningTrades += bot.winning_trades || 0;
+                totalProfit += bot.total_profit || 0;
+                totalPositions += bot.current_positions || 0;
+            });
+            
+            const overallWinRate = totalTrades > 0 ? (totalWinningTrades / totalTrades * 100) : 0;
+            
+            document.getElementById('total-trades').textContent = totalTrades;
+            document.getElementById('overall-win-rate').textContent = overallWinRate.toFixed(2) + '%';
+            document.getElementById('total-profit').textContent = totalProfit.toFixed(4);
+            document.getElementById('total-profit').className = totalProfit >= 0 ? 'profit' : 'loss';
+            document.getElementById('active-positions').textContent = totalPositions;
+        }
+
+        function updateOrders(orders) {
+            const tbody = document.getElementById('orders-body');
+            const recentOrders = orders.slice(-15).reverse();
+            
+            if (recentOrders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No orders yet</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = recentOrders.map(order => `
+                <tr>
+                    <td>${new Date(order.timestamp).toLocaleString()}</td>
+                    <td><strong>${order.bot || 'N/A'}</strong></td>
+                    <td>${order.symbol || 'N/A'}</td>
+                    <td style="color: ${order.side === 'BUY' ? 'green' : 'red'}">${order.side}</td>
+                    <td>${order.quantity?.toFixed(5) || '0.00000'}</td>
+                    <td>${order.price?.toFixed(2) || '0.00'}</td>
+                    <td class="${order.profit >= 0 ? 'profit' : 'loss'}">
+                        ${order.profit ? order.profit.toFixed(4) : '-'}
+                    </td>
+                    <td>${order.reason || '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function updateBalance(balance) {
+            const balanceDiv = document.getElementById('balance');
+            if (!balance || Object.keys(balance).length === 0) {
+                balanceDiv.innerHTML = '<div class="stat-card"><h4>No balance data</h4></div>';
+                return;
+            }
+            
+            balanceDiv.innerHTML = Object.keys(balance).map(asset => `
+                <div class="stat-card">
+                    <h4>${asset}</h4>
+                    <p>Free: ${balance[asset]?.free?.toFixed(6) || '0.000000'}</p>
+                    <p>Locked: ${balance[asset]?.locked?.toFixed(6) || '0.000000'}</p>
+                </div>
+            `).join('');
+        }
+
+        function startAllBots() {
+            fetch('/api/start', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                })
+                .catch(error => {
+                    alert('Error starting all bots: ' + error);
+                });
+        }
+
+        function stopAllBots() {
+            fetch('/api/stop', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                })
+                .catch(error => {
+                    alert('Error stopping all bots: ' + error);
+                });
+        }
+
+        function startBot(botName) {
+            fetch(`/api/start-bot/${botName}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                })
+                .catch(error => {
+                    alert('Error starting bot: ' + error);
+                });
+        }
+
+        function stopBot(botName) {
+            fetch(`/api/stop-bot/${botName}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                })
+                .catch(error => {
+                    alert('Error stopping bot: ' + error);
+                });
+        }
+
+        // Initialize chart
+        const ctx = document.getElementById('performanceChart').getContext('2d');
+        performanceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Cumulative Profit',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

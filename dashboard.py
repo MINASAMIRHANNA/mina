@@ -127,33 +127,3 @@ if __name__ == '__main__':
     updater_thread.start()
     
     socketio.run(app, host=host, port=port, debug=False, allow_unsafe_werkzeug=True)
-    @app.route('/api/force-trade', methods=['POST'])
-def force_trade():
-    """Force a test trade to verify everything works"""
-    try:
-        from binance.client import Client
-        client = Client(config.BINANCE_API_KEY, config.BINANCE_API_SECRET, testnet=True)
-        
-        # Get current price
-        symbol = 'BTCUSDT'
-        ticker = client.get_symbol_ticker(symbol=symbol)
-        current_price = float(ticker['price'])
-        
-        # Place a limit order that likely won't execute
-        test_price = current_price * 0.9  # 10% below current price
-        quantity = 0.001
-        
-        order = client.order_limit_buy(
-            symbol=symbol,
-            quantity=quantity,
-            price=str(round(test_price, 2))
-        )
-        
-        return jsonify({
-            'status': 'success', 
-            'message': f'Test order placed at ${test_price:.2f}',
-            'order': order
-        })
-        
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
